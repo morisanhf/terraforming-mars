@@ -445,9 +445,22 @@ export class Player implements ILoadable<SerializedPlayer, Player>{
     }
 
     public getCardsWithResources(): Array<ICard> {
-      return this.playedCards.filter(
-          (card) => card.resourceCount && card.resourceCount > 0
-      );
+      const result: Array<ICard> = [];
+
+      this.playedCards.forEach((card) => {
+        if (card.resourceType !== undefined && card.resourceCount && card.resourceCount > 0) {
+          result.push(card);
+        }
+      });
+
+      if (this.corporationCard !== undefined 
+          && this.corporationCard.resourceType !== undefined 
+          && this.corporationCard.resourceCount !== undefined 
+          && this.corporationCard.resourceCount > 0) {
+        result.push(this.corporationCard);
+      }
+      
+      return result;      
     }
 
     public getResourceCards(resource: ResourceType): Array<ICard> {
@@ -1045,7 +1058,17 @@ export class Player implements ILoadable<SerializedPlayer, Player>{
         }
       } 
       return 41;
-    }  
+    }
+
+    public getSelfReplicatingRobotsCard() : IProjectCard | undefined {
+      let card = this.playedCards.find(card => card.name === CardName.SELF_REPLICATING_ROBOTS);
+      if (card instanceof SelfReplicatingRobots) {
+        if (card.targetCard !== undefined) {
+          return card.targetCard;
+        }
+      } 
+      return undefined;
+    }      
 
     public getCardCost(game: Game, card: IProjectCard): number {
       let cost: number = card.cost;
@@ -1358,6 +1381,24 @@ export class Player implements ILoadable<SerializedPlayer, Player>{
         }
       );
     }
+
+    private bufferGas(game: Game): PlayerInput {
+      return new SelectOption(
+        "Buffer Gas (" + constants.BUFFER_GAS_COST + " MC)", 
+        () => {
+          game.addSelectHowToPayInterrupt(this, constants.BUFFER_GAS_COST, false, false, "Select how to pay for Buffer Gas project");
+          this.increaseTerraformRatingSteps(1, game);
+          this.onStandardProject(StandardProjectType.BUFFER_GAS);
+          game.log(
+            LogMessageType.DEFAULT,
+            "${0} used ${1} standard project",
+            new LogMessageData(LogMessageDataType.PLAYER, this.id),
+            new LogMessageData(LogMessageDataType.STANDART_PROJECT, "Buffer Gas")
+          );
+          return undefined;
+        }
+      );
+    }    
 
     private buildPowerPlant(game: Game): PlayerInput {
       return new SelectOption(
@@ -1922,6 +1963,13 @@ export class Player implements ILoadable<SerializedPlayer, Player>{
           }
       }
 
+      if ( game.soloTR &&
+        this.canAfford(constants.BUFFER_GAS_COST)) {
+        standardProjects.options.push(
+            this.bufferGas(game)
+        );
+      }      
+
       return standardProjects;
     }
 
@@ -2220,8 +2268,11 @@ export class Player implements ILoadable<SerializedPlayer, Player>{
         if(element.resourceCount && element.resourceCount > 0) {
           card.resourceCount = element.resourceCount;
         }
-        if(card instanceof SelfReplicatingRobots && element instanceof SelfReplicatingRobots) {
-          card.targetCard = element.targetCard;
+        if(card instanceof SelfReplicatingRobots) {
+          let targetCard = (element as SelfReplicatingRobots).targetCard;
+          if (targetCard !== undefined) {
+            card.targetCard = getProjectCardByName(targetCard.name)!;
+          }
         }
         return card;
       });
